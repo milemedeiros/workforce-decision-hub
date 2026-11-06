@@ -1,0 +1,191 @@
+# ADR-002: Employee Identity Reconciliation
+
+**Status:** Accepted for MVP design  
+**Decision type:** Data Architecture / Identity Management  
+**Project:** Workforce Decision Hub
+
+## Context
+
+Workforce operations often rely on multiple systems that identify the same employee differently.
+
+HR platforms, workforce management tools, corporate directories, and operational applications may use separate identifiers, inconsistent naming conventions, or records that change over time.
+
+A single employee might have an HR employee number, a workforce system identifier, a directory username, and one or more email addresses.
+
+These values cannot always be treated as interchangeable or universally unique.
+
+Without a reliable identity model, applications risk associating requests, schedules, permissions, and decisions with the wrong person.
+
+## Decision
+
+Workforce Decision Hub will use a stable internal identifier called the **Canonical Employee ID**.
+
+External identifiers will be stored as source-specific mappings rather than used as primary keys for operational records.
+
+The identity model will distinguish between:
+
+- An employee's internal canonical identity
+- Identifiers provided by external systems
+- Evidence used to associate records
+- The verification status of each association
+- Historical changes to identity mappings
+
+## Proposed Data Model
+
+### EMPLOYEES
+
+Stores the canonical employee record.
+
+Example fields:
+
+- employee_id
+- display_name
+- employment_status
+- created_at
+- updated_at
+
+### IDENTITY_SOURCES
+
+Defines external identity sources.
+
+Example fields:
+
+- source_id
+- source_name
+- source_type
+- active
+
+### EMPLOYEE_IDENTIFIERS
+
+Stores source-specific identifiers and their relationships to canonical employee records.
+
+Example fields:
+
+- mapping_id
+- employee_id
+- source_id
+- external_identifier
+- verification_status
+- verified_at
+- created_at
+
+A source identifier must not be linked to multiple active canonical employee records without explicit conflict handling.
+
+### IDENTITY_REVIEW_QUEUE
+
+Stores ambiguous or conflicting identity matches requiring investigation.
+
+Example fields:
+
+- review_id
+- source_id
+- external_identifier
+- candidate_employee_ids
+- reason
+- status
+- reviewed_by
+- reviewed_at
+
+### AUDIT_LOG
+
+Records identity-related changes and decisions.
+
+Example events include:
+
+- Identifier linked
+- Identifier unlinked
+- Identity conflict detected
+- Manual verification completed
+- Mapping corrected
+
+## Matching Strategy
+
+Identity reconciliation will follow a conservative approach.
+
+### Verified Match
+
+An association supported by sufficient trusted evidence under documented matching rules.
+
+### Review Required
+
+A potential match where the available evidence is insufficient for automatic verification.
+
+### Conflict Detected
+
+An identifier or set of records that contradicts an existing association or creates an unresolved identity conflict.
+
+Names and email similarities alone will not automatically establish identity.
+
+Matching rules and source trust levels will be configurable and validated through testing.
+
+## Authorization and Safety
+
+Identity reconciliation and user authentication are separate responsibilities.
+
+A canonical employee record does not automatically grant application access or permissions.
+
+The backend must validate the authenticated user, their authorized identity mapping, and their role before allowing protected actions.
+
+Unverified or conflicting identities must not receive automatic authorization to approve requests or access another employee's records.
+
+The application may preserve an unverified request in a restricted state if the requester can be safely authenticated, but it must not execute workforce changes until the necessary checks are complete.
+
+## Data Integrity
+
+The implementation will aim to:
+
+- Prevent duplicate active mappings for the same source and external identifier
+- Record mapping changes without silently overwriting history
+- Validate identity associations on the server
+- Handle concurrent updates safely
+- Restrict access to identity data
+- Minimize personal data collected and displayed
+
+Google Sheets does not provide relational database constraints automatically. These safeguards must be implemented and tested in the application layer.
+
+## Alternatives Considered
+
+### Email as the Primary Key
+
+Simple to implement but vulnerable to address changes, shared or reused addresses, and inconsistent source data.
+
+**Not selected.**
+
+### Employee Number as the Primary Key
+
+Potentially reliable within a single authoritative source but not necessarily unique across organizations or systems.
+
+**Not selected as a universal identifier.**
+
+### Canonical Employee ID with Source Mappings
+
+Separates internal identity from external identifiers and supports reconciliation, corrections, and future integrations.
+
+**Selected.**
+
+## Validation Plan
+
+The MVP will use synthetic records to test:
+
+1. One employee with multiple external identifiers
+2. Duplicate names belonging to different employees
+3. Changes to an employee's email address
+4. Conflicting external identifiers
+5. Missing or incomplete source data
+6. Manual review and correction
+7. Unauthorized access attempts
+8. Concurrent mapping updates
+
+No matching accuracy or performance result is claimed before testing.
+
+## Decision Outcome
+
+**Accepted for the initial architecture.**
+
+The MVP will establish canonical employee identifiers and source mappings before implementing employee requests.
+
+Automated reconciliation and advanced conflict resolution will be introduced incrementally and evaluated using synthetic data.
+
+---
+
+This ADR describes an independent portfolio application. It does not disclose employer or client identity systems, internal mappings, proprietary data, or confidential security policies.
